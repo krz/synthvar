@@ -1,0 +1,16 @@
+Package: synthvar
+Type: Package
+Title: A package for variable selection and synthtic controls
+Version: 0.0.1
+Authors@R: c(
+    person("Christoph", "Kurz", email = "christoph.kurz@helmholtz-muenchen.de", role = c("aut", "cre"),
+    person("Laura", "Hatfield", email = "hatfield@hcp.med.harvard.edu", role = "aut"),
+    person("Sherri", "Rose", email = "hatfield@hcp.med.harvard.edu", role = "aut"))
+Maintainer: Christoph Kurz <christoph.kurz@helmholtz-muenchen.de>
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+License: CC0
+Encoding: UTF-8
+LazyData: true
+Depends: R (>= 3.1.0)
+Imports: mRMRe, quadprog
