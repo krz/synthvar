@@ -15,7 +15,7 @@ synthvar <- function(df = NULL,
                      time = NULL, # pre intervention time
                      treated = NULL,  # treated unit (integer)
                      control= NULL,  # control unit vector
-                     method = "mrmre")  # default method = mrmre
+                     method = "mrmre")  # default method = mrmre, other methods = "sl"
   {
   # sanity checks
   if(is.null(df) == TRUE) {stop("\n No input data frame provided")}
@@ -52,8 +52,37 @@ synthvar <- function(df = NULL,
       vi <- vi[order(vi$importance, decreasing=TRUE),]
       vars[[i]] <- vi$feature[1:4]  # 4 top features
     }
+  }
+  if(method == "sl") {
+    for(i in 1:length(controls)){
+      dd <- controls[[i]]
+      # train model
+      sl <- SuperLearner(Y = dd[, 1], X = dd[, -1], family = gaussian(),
+                         SL.library = c("SL.ranger", "SL.bayesglm", "SL.svm"))
+      # predict, mse
+      refRMSE <- sqrt(mean((predict(sl, dd[, -1])$pred - dd[1, ])^2))
+      # calculate variable importance through shuffling
+      VariableImportanceShuffle <- NULL
+      shuffletimes <- 30
+      feat.mse <- c()
+      outcomeName <- colnames(dd)[1]
+      predictorNames <- setdiff(names(dd), outcomeName)
+      for (feature in predictorNames) {
+        featureRMSEs <- c()
+        shuffledData <- dd[, predictorNames]
+        for (iter in 1:shuffletimes) {
+          shuffledData[, feature] <- sample(shuffledData[, feature], length(shuffledData[, feature]))
+          predictions <- predict(object=sl, shuffledData[, predictorNames])$pred
+          featureRMSEs <- c(featureRMSEs, sqrt((sum((testDF[, outcomeName] - predictions)^2))/nrow(dd)))
+        }
+        feat.mse <- c(feat.mse,  mean((featureRMSEs - refRMSE)/refRMSE))
+      }
+      vi <- data.frame('feature'=predictorNames, 'importance'=feat.mse)
+      vi <- vi[order(vi$importance, decreasing=TRUE), ]
+    }
+    vars[[i]] <- as.vector(vi$feature[1:4])
   } else {
-    stop(paste("\n", "unknown method:", method))
+    stop(paste("\n", "unknown method: ", method))
   }
   # final list of variables + outcome variable:
   impvars <- c(colnames(df)[1], unique(unlist(vars)))
