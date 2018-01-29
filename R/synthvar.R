@@ -73,19 +73,23 @@ synthvar <- function(df = NULL,
         for (iter in 1:shuffletimes) {
           shuffledData[, feature] <- sample(shuffledData[, feature], length(shuffledData[, feature]))
           predictions <- predict(object=sl, shuffledData[, predictorNames])$pred
-          featureRMSEs <- c(featureRMSEs, sqrt((sum((testDF[, outcomeName] - predictions)^2))/nrow(dd)))
+          featureRMSEs <- c(featureRMSEs, sqrt((sum((dd[, outcomeName] - predictions)^2))/nrow(dd)))
         }
         feat.mse <- c(feat.mse,  mean((featureRMSEs - refRMSE)/refRMSE))
       }
       vi <- data.frame('feature'=predictorNames, 'importance'=feat.mse)
-      vi <- vi[order(vi$importance, decreasing=TRUE), ]
+      #vi <- vi[order(vi$importance, decreasing=TRUE), ]
+      vars[[i]] <- vi
     }
-    vars[[i]] <- as.vector(vi$feature[1:4])
+    #vars[[i]] <- as.vector(vi$feature[1:4])
   } else {
     stop(paste("\n", "unknown method: ", method))
   }
   # final list of variables + outcome variable:
-  impvars <- c(colnames(df)[1], unique(unlist(vars)))
+  vars <- do.call(rbind, vars)
+  vars <- vars[order(vars$importance, decreasing = T), ]
+  impvars <- c(colnames(df)[1], as.vector(vars$feature[1:4]))
+  #impvars <- c(colnames(df)[1], unique(unlist(vars)))
   # make data frames with outcome and important variables
   # make treated vector
   X1 <- stack(df[(df$unit == treated) & (df$time %in% time), impvars])$values
@@ -129,8 +133,7 @@ synthvar <- function(df = NULL,
   cat("\n****************",
       "\n****************",
       "\n****************",
-      "\n\nMSPE (LOSS V):", res$value,
-      #      "\n\nLOSS (W):", loss.w,
+      "\n\n LOSS:", res$value,
       "\n\constrained solution:\n", round(as.numeric(sol$solution), 5),
       "\n\unconstrained solution:\n", round(as.numeric(sol$unconstrained.solution), 5),
       "\n\n"
