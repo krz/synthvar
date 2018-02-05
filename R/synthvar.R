@@ -15,7 +15,7 @@ synthvar <- function(df = NULL,
                      time = NULL, # pre intervention time
                      treated = NULL,  # treated unit (integer)
                      control= NULL,  # control unit vector
-                     method = "mrmre")  # default method = mrmre, other methods = "sl"
+                     method = "sl")  # default method = mrmre, other methods = "sl"
   {
   # sanity checks
   if(is.null(df) == TRUE) {stop("\n No input data frame provided")}
@@ -59,25 +59,25 @@ synthvar <- function(df = NULL,
       # train model
       sl <- SuperLearner(Y = dd[, 1], X = dd[, -1], family = gaussian(),
                          SL.library = c("SL.ranger", "SL.bayesglm", "SL.svm"))
-      # predict, mse
-      refRMSE <- sqrt(mean((predict(sl, dd[, -1])$pred - dd[1, ])^2))
+      # predict, make reference RMSE
+      ref.RMSE <- sqrt(mean((predict(sl, dd[, -1])$pred - dd[1, ])^2))
       # calculate variable importance through shuffling
       VariableImportanceShuffle <- NULL
-      shuffletimes <- 30
+      shuffletimes <- 10
       feat.mse <- c()
-      outcomeName <- colnames(dd)[1]
-      predictorNames <- setdiff(names(dd), outcomeName)
-      for (feature in predictorNames) {
-        featureRMSEs <- c()
-        shuffledData <- dd[, predictorNames]
+      outcome.name <- colnames(dd)[1]
+      pred.names <- setdiff(names(dd), outcome.name)
+      for (feature in pred.names) {
+        feat.RMSEs <- c()
+        shuffled.data <- dd[, pred.names]
         for (iter in 1:shuffletimes) {
-          shuffledData[, feature] <- sample(shuffledData[, feature], length(shuffledData[, feature]))
-          predictions <- predict(object=sl, shuffledData[, predictorNames])$pred
-          featureRMSEs <- c(featureRMSEs, sqrt((sum((dd[, outcomeName] - predictions)^2))/nrow(dd)))
+          shuffled.data[, feature] <- sample(shuffled.data[, feature], length(shuffled.data[, feature]))
+          preds <- predict(object=sl, shuffled.data[, pred.names])$pred
+          feat.RMSEs <- c(feat.RMSEs, sqrt((sum((dd[, outcome.name] - preds)^2))/nrow(dd)))
         }
-        feat.mse <- c(feat.mse,  mean((featureRMSEs - refRMSE)/refRMSE))
+        feat.mse <- c(feat.mse,  mean((feat.RMSEs - ref.RMSE)/ref.RMSE))
       }
-      vi <- data.frame('feature'=predictorNames, 'importance'=feat.mse)
+      vi <- data.frame('feature'=pred.names, 'importance'=feat.mse)
       #vi <- vi[order(vi$importance, decreasing=TRUE), ]
       vars[[i]] <- vi
     }
@@ -94,13 +94,15 @@ synthvar <- function(df = NULL,
   # make treated vector
   X1 <- stack(df[(df$unit == treated) & (df$time %in% time), impvars])$values
   # make control matrix
+  #################
+  timepoints <- length(time)
   tmp <- df[(df$unit %in% control) & (df$time %in% time), c(impvars)]
-  X0 <- sapply(1:length(tmp), function(i) unlist(tmp[i:(i+2), ]))
-
+  X0 <- sapply(seq(1, nrow(tmp), timepoints), function(i) unlist(tmp[i:(i + timepoints - 1), ]))
+  #################
   #tmp <- df[(df$unit %in% control) & (df$time %in% time), c(impvars)]
   #l <- list()
-  #for(i in 1:length(control)) {
-  #  l[[i]] <- stack(tmp[i:(i+2), ])$values
+  #for(i in 1:seq(1, nrow(tmp), timepoints)) {
+  #  l[[i]] <- stack(tmp[i:(i + timepoints - 1), ])$values
   #}
   #X0 <- do.call(cbind, l)
 
@@ -113,7 +115,7 @@ synthvar <- function(df = NULL,
 
   divisor <- sqrt(apply(big.dataframe, 1, var))
   scaled.matrix <-
-    t(t(big.dataframe) %*% ( 1/(divisor) *
+    t(t(big.dataframe) %*% ( 1/(divisor + 1e-4) *
                                diag(rep(dim(big.dataframe)[1], 1)) ))
 
   X0.scaled <- scaled.matrix[, c(1:(dim(X0)[2]))]
@@ -133,17 +135,17 @@ synthvar <- function(df = NULL,
   cat("\n****************",
       "\n****************",
       "\n****************",
-      "\n\n LOSS:", res$value,
-      "\n\constrained solution:\n", round(as.numeric(sol$solution), 5),
-      "\n\unconstrained solution:\n", round(as.numeric(sol$unconstrained.solution), 5),
+      "\n\n LOSS:", sol$value,
+      "\n\n constrained solution:\n", round(as.numeric(sol$solution), 5),
+      "\n\n unconstrained solution:\n", round(as.numeric(sol$unconstrained.solution), 5),
       "\n\n"
   )
 
   optimize.out <- list(
     solution = round(as.numeric(sol$solution), 5),
     solution.unconstrained = round(as.numeric(sol$unconstrained.solution), 5),
-    loss = res.value,
-    lagrangian = res$Lagrangian
+    loss = sol$value,
+    lagrangian = sol$Lagrangian
   )
 
   return(invisible(optimize.out))
