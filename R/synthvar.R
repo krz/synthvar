@@ -14,7 +14,9 @@
 synthvar <- function(df = NULL,
                      time = NULL, # pre intervention time
                      treated = NULL,  # treated unit (integer)
-                     control= NULL,  # control unit vector
+                     control= NULL,  # control unit vector,
+                     num.vars = 5,  # number of important variables,
+                     shuffletimes = 30,
                      method = "sl")  # default method = mrmre, other methods = "sl"
   {
   # sanity checks
@@ -50,7 +52,7 @@ synthvar <- function(df = NULL,
       row.names(vi) <- NULL
       vi <- na.omit(vi)
       vi <- vi[order(vi$importance, decreasing=TRUE),]
-      vars[[i]] <- vi$feature[1:4]  # 4 top features
+      vars[[i]] <- vi$feature[1:num.vars]  # top features
     }
   }
   if(method == "sl") {
@@ -60,22 +62,22 @@ synthvar <- function(df = NULL,
       sl <- SuperLearner(Y = dd[, 1], X = dd[, -1], family = gaussian(),
                          SL.library = c("SL.ranger", "SL.bayesglm", "SL.svm"))
       # predict, make reference RMSE
-      ref.RMSE <- sqrt(mean((predict(sl, dd[, -1])$pred - dd[1, ])^2))
+      ref.MSE <- mean((predict(sl, dd[, -1])$pred - dd[1, ])^2)
       # calculate variable importance through shuffling
       VariableImportanceShuffle <- NULL
-      shuffletimes <- 10
+      shuffles <- shuffletimes
       feat.mse <- c()
       outcome.name <- colnames(dd)[1]
       pred.names <- setdiff(names(dd), outcome.name)
       for (feature in pred.names) {
-        feat.RMSEs <- c()
+        feat.MSEs <- c()
         shuffled.data <- dd[, pred.names]
-        for (iter in 1:shuffletimes) {
+        for (iter in 1:shuffles) {
           shuffled.data[, feature] <- sample(shuffled.data[, feature], length(shuffled.data[, feature]))
           preds <- predict(object=sl, shuffled.data[, pred.names])$pred
-          feat.RMSEs <- c(feat.RMSEs, sqrt((sum((dd[, outcome.name] - preds)^2))/nrow(dd)))
+          feat.MSEs <- c(feat.MSEs, (sum((dd[, outcome.name] - preds)^2)/nrow(dd)))
         }
-        feat.mse <- c(feat.mse,  mean((feat.RMSEs - ref.RMSE)/ref.RMSE))
+        feat.mse <- c(feat.mse,  mean((ref.MSE - feat.MSEs)/ref.RMSE))
       }
       vi <- data.frame('feature'=pred.names, 'importance'=feat.mse)
       #vi <- vi[order(vi$importance, decreasing=TRUE), ]
@@ -88,7 +90,7 @@ synthvar <- function(df = NULL,
   # final list of variables + outcome variable:
   vars <- do.call(rbind, vars)
   vars <- vars[order(vars$importance, decreasing = T), ]
-  impvars <- c(colnames(df)[1], as.vector(vars$feature[1:4]))
+  impvars <- c(colnames(df)[1], as.vector(vars$feature[1:num.vars]))
   #impvars <- c(colnames(df)[1], unique(unlist(vars)))
   # make data frames with outcome and important variables
   # make treated vector
@@ -128,8 +130,6 @@ synthvar <- function(df = NULL,
   b <- c(1,rep(0, ncol(X0.scaled)))
   d <- t(X1.scaled) %*% X0.scaled
   sol <- solve.QP(Dmat = Rinv, factorized = TRUE, dvec = d, Amat = C, bvec = b, meq = 1)
-  #round(sol$solution, 4)
-
 
   # print results
   cat("\n****************",
@@ -138,6 +138,7 @@ synthvar <- function(df = NULL,
       "\n\n LOSS:", sol$value,
       "\n\n constrained solution:\n", round(as.numeric(sol$solution), 5),
       "\n\n unconstrained solution:\n", round(as.numeric(sol$unconstrained.solution), 5),
+      "\n\n selected variables:\n", impvars,
       "\n\n"
   )
 
@@ -145,7 +146,8 @@ synthvar <- function(df = NULL,
     solution = round(as.numeric(sol$solution), 5),
     solution.unconstrained = round(as.numeric(sol$unconstrained.solution), 5),
     loss = sol$value,
-    lagrangian = sol$Lagrangian
+    lagrangian = sol$Lagrangian,
+    variables = impvars
   )
 
   return(invisible(optimize.out))
